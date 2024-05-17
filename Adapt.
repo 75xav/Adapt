@@ -1,0 +1,459 @@
+local DiscordLib = loadstring(game:HttpGet"https://raw.githubusercontent.com/dawid-scripts/UI-Libs/main/discord%20lib.txt")()
+
+local Camera = workspace.CurrentCamera
+local Players = workspace.Players
+local Mouse = game.Players.LocalPlayer:GetMouse()
+local UserInputService = game:GetService("UserInputService")
+
+local Storage = {
+    Index = {
+        Head = 7,
+        Torso = 6,
+    },
+    ESP = {
+        Boxes = {},
+        Tracers = {},
+        Chams = {},
+    },
+    Other = {
+        ViewportSize = Camera.ViewportSize
+    },
+}
+
+local FOVCircle = Drawing.new("Circle")
+do --// Drawing object properties
+
+    do --// Circle
+
+        FOVCircle.Transparency = 1
+        FOVCircle.Visible = false
+        FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+        FOVCircle.Radius = 0
+        
+    end
+    
+end
+
+local Functions = {
+    Normal = {},
+    ESP = {},
+}
+
+local FeatureTable = {
+    Combat = {
+        SilentAim = false,
+        TeamCheck = false,
+        Hitpart = 7, --// 6 = Torso, 7 = Head
+    },
+    Visuals = {
+        Box = {Enabled = false, Color = Color3.fromRGB(255, 255, 255)},
+        Tracers = {Enabled = false, Color = Color3.fromRGB(255, 255, 255)},
+        Chams = {Enabled = false, FillColor = Color3.fromRGB(255, 255, 255), OutlineColor = Color3.fromRGB(255, 255, 255), VisibleOnly = false, Transparency = .5},
+
+        TeamCheck = false,
+        UseTeamColor = false, --// Team colors dont apply to chams btw
+    },
+    Misc = {
+        Bhop = true,
+    },
+}
+
+local win = DiscordLib:Window("Adapt ")
+
+local serv = win:Server("Adapt | script", "")
+
+local aimchannel = serv:Channel("silent-aim")
+
+local visualchannel = serv:Channel("visuals")
+
+visualchannel:Toggle("Box", false, function(bool)
+    FeatureTable.Visuals.Box.Enabled = bool
+end)
+
+visualchannel:Toggle("Tracers", false, function(bool)
+    FeatureTable.Visuals.Tracers.Enabled = bool
+end)
+
+visualchannel:Toggle("Chams", false, function(bool)
+    FeatureTable.Visuals.Chams.Enabled = bool
+end)
+
+visualchannel:Toggle("Team Check", false, function(bool)
+    FeatureTable.Visuals.TeamCheck = bool
+end)
+
+visualchannel:Toggle("Team Colors", false, function(bool)
+    FeatureTable.Visuals.UseTeamColor = bool
+end)
+
+visualchannel:Label("Box Color")
+visualchannel:Colorpicker("Box Color", Color3.fromRGB(255,255,255), function(t)
+    FeatureTable.Visuals.Box.Color = t
+end)
+
+visualchannel:Label("Tracer Color")
+visualchannel:Colorpicker("Tracer Color", Color3.fromRGB(255,255,255), function(t)
+    FeatureTable.Visuals.Tracers.Color = t
+end)
+
+visualchannel:Label("Fill Color")
+visualchannel:Colorpicker("Fill Color", Color3.fromRGB(255,255,255), function(t)
+    FeatureTable.Visuals.Chams.FillColor = t
+end)
+
+visualchannel:Label("Outline Color")
+visualchannel:Colorpicker("Outline Color", Color3.fromRGB(255,255,255), function(t)
+    FeatureTable.Visuals.Chams.OutlineColor = t
+end)
+
+visualchannel:Slider("Cham Transparency", 0, 1, 0, function(t)
+    FeatureTable.Visuals.Chams.Transparency = t
+end)
+
+aimchannel:Toggle("Silent Aim", false, function(bool)
+    FeatureTable.Combat.SilentAim = bool
+end)
+
+aimchannel:Toggle("Team Check", false, function(bool)
+    FeatureTable.Combat.TeamCheck = bool
+end)
+
+aimchannel:Toggle("Visualise Range", false, function(bool)
+    FOVCircle.Visible = bool
+end)
+
+aimchannel:Slider("Range", 0, 1500, 0, function(t)
+    FOVCircle.Radius = t
+end)
+
+local drop = aimchannel:Dropdown("Hitpart",{"Head","Torso"}, function(value)
+    FeatureTable.Combat.Hitpart = Storage.Index[value]
+end)
+
+do --// Logic
+    do --// Functions
+        do --// Regular
+            function Functions.Normal:GetTeam(Player)
+                if Player ~= nil and Player.Parent ~= nil and Player:FindFirstChildOfClass("Folder") then
+                    local Helmet = Player:FindFirstChildWhichIsA("Folder"):FindFirstChildOfClass("MeshPart")
+                    if Helmet then
+                        if Helmet.BrickColor == BrickColor.new("Black") then
+                            return game.Teams.Phantoms
+                        else
+                            return game.Teams.Ghosts
+                        end
+                    end
+                end
+            end
+    
+            function Functions.Normal:GetPlayers()
+                local PlayerList = {}
+                for i,Teams in Players:GetChildren() do
+                    for i,Players in Teams:GetChildren() do
+                        table.insert(PlayerList, Players)
+                    end
+                end
+                return PlayerList
+            end
+    
+            function Functions.Normal:Measure(Origin, End)
+                return (Origin - End).Magnitude
+            end
+
+            function Functions.Normal:GetGun()
+                for i,Viewmodel in Camera:GetChildren() do
+                    if Viewmodel:IsA("Model") and not Viewmodel.Name:find("Arm") then
+                        return Viewmodel
+                    end
+                end
+                return nil
+            end
+        end
+
+        do --// Aimbot
+            
+            function Functions.Normal:getClosestPlayer()
+                local Player = nil
+                local Distance = math.huge
+                for i,Players in Functions.Normal:GetPlayers() do
+                    if Players ~= nil then
+                        local Hitpart = Players:GetChildren()[FeatureTable.Combat.Hitpart]
+                        local Screen = Camera:WorldToViewportPoint(Hitpart.Position)
+                        local MeasureDistance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(Screen.X, Screen.Y)).Magnitude
+                        if MeasureDistance < Distance and MeasureDistance <= FOVCircle.Radius*1.25 then --// not how  you actually get an accurate circle but i dont care lol...
+                            Player = Players
+                            Distance = MeasureDistance
+                        end
+                    end
+                end
+                return Player
+            end
+
+        end
+
+        do --// ESP
+            function Functions.ESP:Create(Player)
+    
+                if not table.find(Storage.ESP.Boxes, Player) then
+    
+                    local Box = Drawing.new("Square")
+                    Box.Color = Color3.fromRGB(255,255,255)
+                    Box.Transparency = 1
+                    Box.Visible = true
+                    Box.Thickness = 1
+                    Box.ZIndex = 2
+                    
+                    do --// Table insert
+    
+                        table.insert(Storage.ESP.Boxes, Box)
+                        table.insert(Storage.ESP.Boxes, Player)
+    
+                    end
+            
+                end
+                if not table.find(Storage.ESP.Tracers, Player) then
+    
+                    local Tracer = Drawing.new("Line")
+                    Tracer.Transparency = 1
+                    Tracer.Visible = true
+                    Tracer.Color = Color3.fromRGB(255,255,255)
+                    
+                    do --// Table insert
+    
+                        table.insert(Storage.ESP.Tracers, Tracer)
+                        table.insert(Storage.ESP.Tracers, Player)
+    
+                    end
+            
+                end
+    
+            end
+
+            function Functions.ESP:ClearTable(esps, esptable, index)
+                for i = 1, #esps do
+                    esps[i]:Destroy()
+                end
+                do --// Table clear
+                    table.remove(esptable, index)
+                    table.remove(esptable, index-1)
+                end
+            end
+        end
+
+    end
+
+    do --// Loops
+
+        task.spawn(function()
+            while task.wait() do --// gl working with the dogshit code, skids :D
+
+                do --// Combat
+
+                    do --// Aimbot
+
+                        if FeatureTable.Combat.SilentAim then
+                            local Target = Functions.Normal:getClosestPlayer()
+                            if Target ~= nil and (FeatureTable.Combat.TeamCheck and Functions.Normal:GetTeam(Target) ~= game.Players.LocalPlayer.Team or not FeatureTable.Combat.TeamCheck) then
+                                local Hitpart = Target:GetChildren()[FeatureTable.Combat.Hitpart]
+                                local Gun = Functions.Normal:GetGun()
+                        
+                                if Hitpart and Gun then
+                                    for i, Stuff in pairs(Gun:GetChildren()) do
+                                        local Joints = Stuff:GetJoints()
+                                        if Stuff.Name:find("SightMark") or Stuff.Name:find("FlameSUP") or Stuff.Name:find("Flame") then
+                                            Joints[1].C0 = Joints[1].Part0.CFrame:ToObjectSpace(CFrame.lookAt(Joints[1].Part1.Position, Hitpart.Position))
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        
+
+                    end
+
+                end
+
+                do --// Visuals
+                    for i,Players in Functions.Normal:GetPlayers() do --// bro... so p1000
+                        Functions.ESP:Create(Players)
+                    end
+
+                    do --// Box ESP
+
+                        for i,Player in Storage.ESP.Boxes do --// Box logic (obviously)
+                            if typeof(Player) == "Instance" then
+
+                                local Box = Storage.ESP.Boxes[i-1]
+                
+                                if FeatureTable.Visuals.Box.Enabled and Player:IsDescendantOf(workspace) then
+                                    local Torso = Player:GetChildren()[6]
+                                    if Torso ~= nil then
+                                        local Position, OnScreen = Camera:WorldToViewportPoint(Torso.Position) --// Convert to screen pos since we're rendering the boxes on the screen (duh)
+
+                                        local Team = Functions.Normal:GetTeam(Player)
+                                        local TeamColor = Team.TeamColor
+                
+                                        if OnScreen and FeatureTable.Visuals.TeamCheck and tostring(Team) ~= game.Players.LocalPlayer.Team.Name or not FeatureTable.Visuals.TeamCheck then
+                
+                                            local PosX = Position.X - (Box.Size.X / 2)
+                                            local PosY = Position.Y - (Box.Size.Y / 2)
+                                            local Scale = 1000/(Camera.CFrame.Position - Torso.Position).Magnitude*80/Camera.FieldOfView --// Very simple box distance scale
+                                            
+                                            Box.Position = Vector2.new(PosX, PosY)
+                                            Box.Size = Vector2.new(2 * Scale, 3 * Scale)
+                                            Box.Visible = true
+                                            
+                                            if FeatureTable.Visuals.UseTeamColor then --// 😭
+                                                if tostring(TeamColor) == "Bright blue" then
+                                                    Box.Color = Color3.fromRGB(0, 162, 255)
+                                                elseif tostring(TeamColor) == "Bright orange" then
+                                                    Box.Color = Color3.fromRGB(255, 162, 0)
+                                                end
+                                            else
+                                                Box.Color = FeatureTable.Visuals.Box.Color
+                                            end
+                
+                                        else
+                
+                                            Functions.ESP:ClearTable({Box}, Storage.ESP.Boxes, i)
+                
+                                        end
+                
+                                    else
+                
+                                        Functions.ESP:ClearTable({Box}, Storage.ESP.Boxes, i)
+                
+                                    end
+                                else
+                
+                                    Functions.ESP:ClearTable({Box}, Storage.ESP.Boxes, i)
+                
+                                end
+                            end
+                        end
+                    end
+                    do --// Tracer ESP
+                        for i,Player in Storage.ESP.Tracers do --// Tracer logic (obviously once again)
+                            if typeof(Player) == "Instance" then
+
+                                local Tracer = Storage.ESP.Tracers[i-1]
+                
+                                if FeatureTable.Visuals.Tracers.Enabled and Player:IsDescendantOf(workspace) then
+                                    local Torso = Player:GetChildren()[6]
+                                    if Torso ~= nil then
+                                        local Position, OnScreen = Camera:WorldToViewportPoint(Torso.Position) --// Convert to screen pos since we're rendering the boxes on the screen (duh)
+
+                                        local Team = Functions.Normal:GetTeam(Player)
+                                        local TeamColor = Team.TeamColor
+                
+                                        if OnScreen and FeatureTable.Visuals.TeamCheck and tostring(Team) ~= game.Players.LocalPlayer.Team.Name or not FeatureTable.Visuals.TeamCheck then
+                                            
+                                            Tracer.From = Vector2.new(Storage.Other.ViewportSize.X/2,Storage.Other.ViewportSize.Y/2) --// Set origin to center of screen cuz screen size divided by 2 is center
+                                            Tracer.To = Vector2.new(Position.X, Position.Y)
+                                            
+                                            if FeatureTable.Visuals.UseTeamColor then --// emm
+                                                if tostring(TeamColor) == "Bright blue" then
+                                                    Tracer.Color = Color3.fromRGB(0, 162, 255)
+                                                elseif tostring(TeamColor) == "Bright orange" then
+                                                    Tracer.Color = Color3.fromRGB(255, 162, 0)
+                                                end
+                                            else
+                                                Tracer.Color = FeatureTable.Visuals.Tracers.Color
+                                            end
+                
+                                        else
+                
+                                            Functions.ESP:ClearTable({Tracer}, Storage.ESP.Tracers, i)
+                
+                                        end
+                
+                                    else
+                
+                                        Functions.ESP:ClearTable({Tracer}, Storage.ESP.Tracers, i)
+                
+                                    end
+                                else
+                
+                                    Functions.ESP:ClearTable({Tracer}, Storage.ESP.Tracers, i)
+                
+                                end
+                            end
+                        end
+                        
+                    end
+                    do --// Cham ESP
+                        for i, Player in Functions.Normal:GetPlayers() do
+                            if Player ~= nil then
+                        
+                                local Highlight = Player:FindFirstChildOfClass("Highlight")
+                                local Team = Functions.Normal:GetTeam(Player)
+                        
+                                if FeatureTable.Visuals.Chams.Enabled and (FeatureTable.Visuals.TeamCheck and tostring(Team) ~= game.Players.LocalPlayer.Team.Name or not FeatureTable.Visuals.TeamCheck) then
+                                    
+                                    if not Highlight then
+                                        Highlight = Instance.new("Highlight", Player)
+                                    end
+                        
+                                    Highlight.Enabled = true
+                                    Highlight.Adornee = Player
+                                    Highlight.FillColor = FeatureTable.Visuals.Chams.FillColor
+                                    Highlight.OutlineColor = FeatureTable.Visuals.Chams.OutlineColor
+                                    Highlight.FillTransparency = FeatureTable.Visuals.Chams.Transparency
+                                    Highlight.OutlineTransparency = FeatureTable.Visuals.Chams.Transparency
+                                    Highlight.DepthMode = FeatureTable.Visuals.Chams.VisibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+              
+                                else
+                                    if Highlight then
+                                        Highlight:Destroy()
+                                    end
+                                end
+								
+                            end
+                        end
+                        
+                    end
+
+                end
+
+                do --// Misc
+
+                    do --// Bhop
+                        if FeatureTable.Misc.Bhop and UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                            local LocalPlayer = workspace.Ignore:FindFirstChild("RefPlayer")
+                            if LocalPlayer then
+                                local Humanoid = LocalPlayer:FindFirstChildOfClass("Humanoid")
+                                if Humanoid then
+                                    Humanoid.Jump = true
+                                end
+                            end
+                        end
+                    end
+                    
+                end
+                do --// Extra
+                    FOVCircle.Position = Vector2.new(Storage.Other.ViewportSize.X/2, Storage.Other.ViewportSize.Y/2)
+                end
+
+            end
+        end)
+
+    end
+
+    do --// Connections
+        
+        Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function(Value)
+            Storage.Other.ViewportSize = Value
+        end)
+        
+    end
+
+    --// Made by @moxbilez 😁
+
+end
+    
+local creds = win:Server("Credits", "http://www.roblox.com/asset/?id=6031075938")
+
+local credchannel = creds:Channel("credits")
+
+credchannel:Label("Made by @Moxbilez on discord")
+credchannel:Label("Silent aim made by Dementia enjoyer")
